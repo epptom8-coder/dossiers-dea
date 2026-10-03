@@ -172,19 +172,6 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('show'), 2200);
 }
 
-function slugify(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60) || 'dossier';
-}
-
-function generateId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 function sha256(value) {
   return crypto.subtle
     .digest('SHA-256', new TextEncoder().encode(value))
@@ -227,27 +214,27 @@ function safeLocalStorageSet(key, value) {
 }
 
 function getAuth() {
-  return safeLocalStorageGet(STORAGE_KEYS.auth, null);
+  return safeLocalStorageGet('dossiers-dea-auth', null);
 }
 
 function setAuth(auth) {
-  safeLocalStorageSet(STORAGE_KEYS.auth, auth);
+  safeLocalStorageSet('dossiers-dea-auth', auth);
 }
 
 function getSavedDossiers() {
-  return safeLocalStorageGet(STORAGE_KEYS.saved, {});
+  return safeLocalStorageGet('dossiers-dea-saved', {});
 }
 
 function saveDossiersMap(map) {
-  safeLocalStorageSet(STORAGE_KEYS.saved, map);
+  safeLocalStorageSet('dossiers-dea-saved', map);
 }
 
 function getRecentList() {
-  return safeLocalStorageGet(STORAGE_KEYS.recent, []);
+  return safeLocalStorageGet('dossiers-dea-recent', []);
 }
 
 function setRecentList(list) {
-  safeLocalStorageSet(STORAGE_KEYS.recent, list);
+  safeLocalStorageSet('dossiers-dea-recent', list);
 }
 
 function setLoggedInUser(user) {
@@ -285,32 +272,8 @@ function updateTopbar() {
   }
 }
 
-function listRequiredFieldsForCurrentDossier() {
-  const fields = [...document.querySelectorAll('[data-required="true"]')]
-    .map((element) => {
-      const label = element.dataset.label || 'Champ';
-      const value = readInputValue(element);
-      return { label, value };
-    })
-    .filter((item) => !item.value || (Array.isArray(item.value) && item.value.length === 0));
-
-  return fields.map((item) => item.label);
-}
-
-function readInputValue(element) {
-  if (element.type === 'checkbox') {
-    return element.checked ? element.value : '';
-  }
-
-  if (element.type === 'checkbox-group') {
-    return element.value || '';
-  }
-
-  if (element.tagName === 'SELECT' || element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-    return element.value.trim();
-  }
-
-  return '';
+function generateId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function createBaseDossier(type) {
@@ -335,10 +298,8 @@ function createBaseDossier(type) {
     completePar: '',
     dateCompletion: '',
     observationsFinales: '',
-    mesurePrises: [],
-    reviewMode: false,
-    readOnly: false,
-    notes: ''
+    mesuresPrises: [],
+    readOnly: false
   };
 
   const template = dossierTemplates[type] || dossierTemplates['trafic-armes'];
@@ -346,29 +307,23 @@ function createBaseDossier(type) {
     dossier[field.key] = '';
   });
 
-  if (dossier.type === 'licenciement') {
-    dossier.typeDossier = 'Rapport de licenciement';
-  }
-
   return dossier;
 }
 
 function renderTypeButtons() {
   const root = document.getElementById('new-dossier-types');
   const types = Object.keys(typeMeta);
-  root.innerHTML = types
-    .map(
-      (type) => `
-        <button class="type-item" data-type="${type}">
-          <div>
-            <strong>${typeMeta[type].label}</strong>
-            <span>${typeMeta[type].description}</span>
-          </div>
-          <span>＋</span>
-        </button>
-      `
-    )
-    .join('');
+  root.innerHTML = types.map(
+    (type) => `
+      <button class="type-item" data-type="${type}">
+        <div>
+          <strong>${typeMeta[type].label}</strong>
+          <span>${typeMeta[type].description}</span>
+        </div>
+        <span>＋</span>
+      </button>
+    `
+  ).join('');
 
   root.querySelectorAll('[data-type]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -376,7 +331,6 @@ function renderTypeButtons() {
         showToast('Connectez-vous pour créer un dossier.');
         return;
       }
-
       const dossier = createBaseDossier(button.dataset.type);
       state.currentDossier = dossier;
       renderDossierView(dossier);
@@ -386,7 +340,8 @@ function renderTypeButtons() {
 
 function renderRecentList() {
   const list = document.getElementById('recent-list');
-  const dossiers = Object.values(getSavedDossiers());
+  const map = getSavedDossiers();
+  const dossiers = Object.values(map);
 
   if (!dossiers.length) {
     list.innerHTML = '<div class="muted">Aucun dossier sauvegardé pour le moment.</div>';
@@ -394,22 +349,21 @@ function renderRecentList() {
   }
 
   const recent = getRecentList();
-  const ordered = recent.length ? recent.map((id) => dossiers.find((d) => d.id === id)).filter(Boolean) : dossiers.slice().reverse();
-  list.innerHTML = ordered
-    .map(
-      (dossier) => `
-        <div class="recent-item">
-          <div class="recent-main" data-open="${dossier.id}">
-            <strong>${dossier.title || typeMeta[dossier.type]?.label || 'Dossier'}</strong>
-            <span class="recent-meta">${dossier.numeroDossier || 'N° non défini'} • ${dossier.status || 'INCOMPLET'}</span>
-          </div>
-          <div class="recent-actions">
-            <button class="icon-btn" data-delete="${dossier.id}" title="Supprimer">🗑</button>
-          </div>
-        </div>
-      `
-    )
-    .join('');
+  const ordered = recent.length
+    ? recent.map((id) => dossiers.find((d) => d.id === id)).filter(Boolean)
+    : dossiers.slice().reverse();
+
+  list.innerHTML = ordered.map((dossier) => `
+    <div class="recent-item">
+      <div class="recent-main" data-open="${dossier.id}">
+        <strong>${dossier.title || typeMeta[dossier.type]?.label || 'Dossier'}</strong>
+        <span class="recent-meta">${dossier.numeroDossier || 'N° non défini'} • ${dossier.status || 'INCOMPLET'}</span>
+      </div>
+      <div class="recent-actions">
+        <button class="icon-btn" data-delete="${dossier.id}" title="Supprimer">🗑</button>
+      </div>
+    </div>
+  `).join('');
 
   list.querySelectorAll('[data-open]').forEach((entry) => {
     entry.addEventListener('click', () => {
@@ -437,15 +391,8 @@ function renderRecentList() {
 }
 
 function renderHome() {
-  const auth = getAuth();
-  const hasLogin = !!(auth && auth.name);
   document.getElementById('view-home').classList.add('active');
   document.getElementById('view-dossier').classList.remove('active');
-
-  if (hasLogin) {
-    updateTopbar();
-  }
-
   renderTypeButtons();
   renderRecentList();
 }
@@ -453,165 +400,6 @@ function renderHome() {
 function navigateToHome() {
   state.currentDossier = null;
   renderHome();
-}
-
-function bindFormValues(form, dossier) {
-  form.innerHTML = '';
-
-  const fieldGroups = [
-    { title: 'IDENTIFICATION', fields: fieldDefinitions.base },
-    { title: 'Détails du dossier', fields: dossierTemplates[dossier.type]?.fields || [] },
-    { title: 'Preuves et suites', fields: fieldDefinitions.preuves },
-    { title: 'VALIDATION', fields: fieldDefinitions.validation }
-  ];
-
-  fieldGroups.forEach((group) => {
-    const panel = document.createElement('div');
-    panel.className = 'form-panel';
-
-    const header = document.createElement('div');
-    header.className = 'form-panel-header';
-    header.textContent = group.title;
-    panel.appendChild(header);
-
-    const body = document.createElement('div');
-    body.className = 'form-panel-body';
-
-    const grid = document.createElement('div');
-    grid.className = 'form-grid';
-
-    group.fields.forEach((field) => {
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'grid';
-      wrapper.style.gap = '8px';
-
-      const label = document.createElement('label');
-      label.htmlFor = `field-${field.key}`;
-      label.innerHTML = `${field.label}${field.required ? ' <span class="required-mark">*</span>' : ''}`;
-
-      wrapper.appendChild(label);
-
-      const value = dossier[field.key] || '';
-      if (field.type === 'textarea') {
-        const input = document.createElement('textarea');
-        input.id = `field-${field.key}`;
-        input.name = field.key;
-        input.dataset.label = field.label;
-        input.dataset.required = field.required ? 'true' : 'false';
-        input.value = value;
-        if (isReadOnlyForDossier(dossier)) input.disabled = true;
-        wrapper.appendChild(input);
-      } else if (field.type === 'select') {
-        const input = document.createElement('select');
-        input.id = `field-${field.key}`;
-        input.name = field.key;
-        input.dataset.label = field.label;
-        input.dataset.required = field.required ? 'true' : 'false';
-        input.innerHTML = `<option value="">Choisir…</option>${field.options
-          .map((option) => `<option value="${option}" ${value === option ? 'selected' : ''}>${option}</option>`)
-          .join('')}`;
-        if (isReadOnlyForDossier(dossier)) input.disabled = true;
-        wrapper.appendChild(input);
-      } else if (field.type === 'checkboxes') {
-        const box = document.createElement('div');
-        box.className = 'checklist';
-        if (field.required) {
-          box.dataset.required = 'true';
-        }
-
-        field.options.forEach((option) => {
-          const item = document.createElement('label');
-          item.className = 'check-item';
-
-          const input = document.createElement('input');
-          input.type = 'checkbox';
-          input.name = field.key;
-          input.value = option;
-          input.checked = Array.isArray(dossier[field.key]) ? dossier[field.key].includes(option) : false;
-          input.dataset.label = field.label;
-          input.dataset.required = field.required ? 'true' : 'false';
-          if (isReadOnlyForDossier(dossier)) input.disabled = true;
-
-          const text = document.createElement('span');
-          text.textContent = option;
-
-          item.appendChild(input);
-          item.appendChild(text);
-          box.appendChild(item);
-        });
-
-        wrapper.appendChild(box);
-      } else {
-        const input = document.createElement('input');
-        input.type = field.type;
-        input.id = `field-${field.key}`;
-        input.name = field.key;
-        input.value = value;
-        input.dataset.label = field.label;
-        input.dataset.required = field.required ? 'true' : 'false';
-        if (isReadOnlyForDossier(dossier)) input.disabled = true;
-        wrapper.appendChild(input);
-      }
-
-      grid.appendChild(wrapper);
-    });
-
-    body.appendChild(grid);
-    panel.appendChild(body);
-    form.appendChild(panel);
-  });
-
-  const actionRow = document.createElement('div');
-  actionRow.className = 'form-row-actions';
-
-  const canEdit = canModifyDossier(dossier);
-  if (canEdit) {
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'primary-btn';
-    saveBtn.textContent = 'Sauvegarder';
-    saveBtn.addEventListener('click', saveCurrentDossier);
-    actionRow.appendChild(saveBtn);
-
-    const lockBtn = document.createElement('button');
-    lockBtn.type = 'button';
-    lockBtn.className = 'secondary-btn';
-    lockBtn.textContent = dossier.locked ? '🔓 Déverrouiller (auteur)' : '🔒 Verrouiller';
-    lockBtn.addEventListener('click', () => {
-      if (dossier.locked) {
-        unlockDossier();
-      } else {
-        lockDossier();
-      }
-    });
-    actionRow.appendChild(lockBtn);
-
-    const moderationBtn = document.createElement('button');
-    moderationBtn.type = 'button';
-    moderationBtn.className = 'ghost-btn';
-    moderationBtn.style.color = 'var(--text)';
-    moderationBtn.style.background = 'var(--panel-muted)';
-    moderationBtn.style.border = '1px solid var(--line)';
-    moderationBtn.textContent = '🛠 Modération';
-    moderationBtn.addEventListener('click', openModerationModal);
-    actionRow.appendChild(moderationBtn);
-  }
-
-  const openLinkBtn = document.createElement('button');
-  openLinkBtn.type = 'button';
-  openLinkBtn.className = 'ghost-btn';
-  openLinkBtn.style.color = 'var(--text)';
-  openLinkBtn.style.background = 'var(--panel-muted)';
-  openLinkBtn.style.border = '1px solid var(--line)';
-  openLinkBtn.textContent = '🔗 Ouvrir le dossier partagé';
-  openLinkBtn.addEventListener('click', () => {
-    const url = buildShareUrl(dossier);
-    window.location.hash = '#' + encodePayload({ d: dossier });
-    showToast('Dossier ouvert en partage public.');
-  });
-  actionRow.appendChild(openLinkBtn);
-
-  form.appendChild(actionRow);
 }
 
 function isReadOnlyForDossier(dossier) {
@@ -633,181 +421,27 @@ function buildShareUrl(dossier) {
   return `${location.origin}${location.pathname}#${encoded}`;
 }
 
-function renderDossierView(dossier) {
-  document.getElementById('view-home').classList.remove('active');
-  document.getElementById('view-dossier').classList.add('active');
-
-  const form = document.getElementById('dossier-form');
-  const topbar = document.getElementById('dossier-topbar');
-  const shareNotice = document.getElementById('share-notice');
-  const formWrap = document.getElementById('dossier-form-wrap');
-
-  const statusClass = dossier.status === 'COMPLET' ? 'complete' : dossier.locked ? 'readonly' : '';
-  document.getElementById('dossier-status').textContent = dossier.status || 'INCOMPLET';
-  document.getElementById('dossier-status').className = `status-badge ${statusClass}`.trim();
-  document.getElementById('dossier-badge').textContent = `Dossier • ${typeMeta[dossier.type]?.label || 'Inconnu'}`;
-  document.getElementById('viewer-title').textContent = dossier.title || typeMeta[dossier.type]?.label || 'Dossier';
-
-  const shareLabel = dossier.status === 'COMPLET' ? 'lecture seule' : 'n’importe quel utilisateur peut le compléter';
-  shareNotice.classList.remove('hidden');
-  shareNotice.innerHTML = `
-    <div class="eyebrow">Lien du dossier</div>
-    <div><strong>${dossier.title || typeMeta[dossier.type]?.label}</strong></div>
-    <div class="muted">${shareLabel}</div>
-    <div class="share-url">
-      <input type="text" value="${buildShareUrl(dossier)}" readonly />
-      <button type="button" class="primary-btn small" id="copy-share-url">📋 Copier le lien</button>
-    </div>
-  `;
-
-  document.getElementById('copy-share-url').addEventListener('click', () => {
-    copyTextToClipboard(buildShareUrl(dossier));
-  });
-
-  formWrap.classList.remove('hidden');
-  topbar.classList.remove('hidden');
-  bindFormValues(form, dossier);
-
-  const linked = document.createElement('div');
-  linked.className = 'link-grid';
-  linked.innerHTML = `
-    <div class="section-header"><h3>Dossiers liés</h3></div>
-    <div class="field-row">
-      <label>Coller un lien d’un autre dossier</label>
-      <div class="share-url">
-        <input id="linked-url" type="text" placeholder="https://...#..." />
-        <button type="button" id="btn-add-linked" class="secondary-btn small">Ajouter</button>
-      </div>
-    </div>
-    <div id="linked-list"></div>
-  `;
-
-  form.appendChild(linked);
-  renderLinkedDossiers();
-
-  const bindAddLinked = document.getElementById('btn-add-linked');
-  bindAddLinked.addEventListener('click', () => {
-    const url = document.getElementById('linked-url').value.trim();
-    if (!url) {
-      showToast('Collez un lien de dossier valide.');
-      return;
-    }
-    addLinkedDossier(url);
-  });
-
-  if (!state.loggedInUser) {
-    document.querySelectorAll('input, textarea, select').forEach((field) => {
-      field.disabled = true;
-    });
-  }
-}
-
-function renderLinkedDossiers() {
-  const list = document.getElementById('linked-list');
-  if (!list) return;
-
-  if (!state.linkedDossiers.length) {
-    list.innerHTML = '<div class="muted">Aucun dossier lié ajouté.</div>';
-    return;
-  }
-
-  list.innerHTML = state.linkedDossiers
-    .map(
-      (item) => `
-        <div class="link-card">
-          <div class="link-card-header">
-            <strong>${item.title}</strong>
-            <span class="inline-tag ${item.status === 'COMPLET' ? 'complete' : item.locked ? 'readonly' : ''}">${item.status || 'INCOMPLET'}</span>
-          </div>
-          <small>${typeMeta[item.type]?.label || item.type}</small>
-          <div class="meta-row">
-            <div class="muted">${item.numeroDossier || 'N° non défini'}</div>
-            <button class="primary-btn small" data-open-linked="${encodeURIComponent(item.url)}">Ouvrir</button>
-          </div>
-        </div>
-      `
-    )
-    .join('');
-
-  list.querySelectorAll('[data-open-linked]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const url = decodeURIComponent(button.dataset.openLinked);
-      openSharedDossier(url);
-    });
-  });
-}
-
-function addLinkedDossier(url) {
-  const dossier = openSharedDossier(url, false);
-  if (!dossier) {
-    showToast('Le lien ne correspond pas à un dossier valide.');
-    return;
-  }
-
-  const duplicate = state.linkedDossiers.some((item) => item.url === url);
-  if (!duplicate) {
-    state.linkedDossiers.push({ ...dossier, url });
-    renderLinkedDossiers();
-    showToast('Dossier lié ajouté.');
-  }
-}
-
-function openSharedDossier(url, navigate = true) {
-  try {
-    const cleanUrl = url.includes('#') ? url.split('#')[1] : url;
-    const payload = decodePayload(cleanUrl);
-    const dossier = payload?.d || payload;
-    if (!dossier || !dossier.type) {
-      return null;
-    }
-
-    if (navigate) {
-      state.currentDossier = dossier;
-      renderDossierView(dossier);
-    }
-
-    return dossier;
-  } catch (error) {
-    return null;
-  }
-}
-
-function onHashChange() {
-  const rawHash = window.location.hash.replace(/^#/, '');
-  if (!rawHash) {
-    if (state.currentDossier) {
-      renderHome();
-    }
-    return;
-  }
-
-  const payload = decodePayload(rawHash);
-  const dossier = payload?.d || payload;
-  if (dossier && dossier.type) {
-    state.currentDossier = dossier;
-    renderDossierView(dossier);
-    return;
-  }
-
-  if (!state.currentDossier) {
-    renderHome();
-  }
+function listRequiredFieldsForCurrentDossier() {
+  const fields = [...document.querySelectorAll('[data-required="true"]')];
+  return fields
+    .map((field) => ({ label: field.dataset.label || 'Champ', value: field.value || (field.checked ? field.value : '') }))
+    .filter((item) => !item.value || item.value === 'null')
+    .map((item) => item.label);
 }
 
 function normalizeFormData(form) {
-  const formData = new FormData(form);
+  const entries = new FormData(form);
   const result = {};
 
-  for (const [key, value] of formData.entries()) {
-    if (formData.getAll(key).length > 1 && key !== 'mesuresPrises') {
-      result[key] = formData.getAll(key);
+  for (const [key, value] of entries.entries()) {
+    if (entries.getAll(key).length > 1) {
+      result[key] = entries.getAll(key);
     } else {
       result[key] = value;
     }
   }
 
-  const checkboxes = form.querySelectorAll('input[type="checkbox"][name]');
-  checkboxes.forEach((checkbox) => {
+  form.querySelectorAll('input[type="checkbox"][name]').forEach((checkbox) => {
     const key = checkbox.name;
     if (!result[key]) result[key] = [];
     if (checkbox.checked) {
@@ -838,6 +472,292 @@ function prepareDossierFromForm(dossier) {
   return merged;
 }
 
+function bindFormValues(form, dossier) {
+  form.innerHTML = '';
+
+  const groups = [
+    { title: 'IDENTIFICATION', fields: fieldDefinitions.base },
+    { title: 'Détails du dossier', fields: dossierTemplates[dossier.type]?.fields || [] },
+    { title: 'Preuves et suites', fields: fieldDefinitions.preuves },
+    { title: 'VALIDATION', fields: fieldDefinitions.validation }
+  ];
+
+  groups.forEach((group) => {
+    const panel = document.createElement('div');
+    panel.className = 'form-panel';
+
+    const header = document.createElement('div');
+    header.className = 'form-panel-header';
+    header.textContent = group.title;
+    panel.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'form-panel-body';
+
+    const grid = document.createElement('div');
+    grid.className = 'form-grid';
+
+    group.fields.forEach((field) => {
+      const wrap = document.createElement('div');
+      wrap.style.display = 'grid';
+      wrap.style.gap = '8px';
+
+      const label = document.createElement('label');
+      label.htmlFor = `field-${field.key}`;
+      label.innerHTML = `${field.label}${field.required ? ' <span class="required-mark">*</span>' : ''}`;
+      wrap.appendChild(label);
+
+      const value = dossier[field.key] || '';
+
+      if (field.type === 'textarea') {
+        const input = document.createElement('textarea');
+        input.id = `field-${field.key}`;
+        input.name = field.key;
+        input.value = value;
+        input.dataset.label = field.label;
+        input.dataset.required = field.required ? 'true' : 'false';
+        if (isReadOnlyForDossier(dossier)) input.disabled = true;
+        wrap.appendChild(input);
+      } else if (field.type === 'select') {
+        const input = document.createElement('select');
+        input.id = `field-${field.key}`;
+        input.name = field.key;
+        input.dataset.label = field.label;
+        input.dataset.required = field.required ? 'true' : 'false';
+        input.innerHTML = `<option value="">Choisir…</option>${field.options.map((option) => `<option value="${option}" ${value === option ? 'selected' : ''}>${option}</option>`).join('')}`;
+        if (isReadOnlyForDossier(dossier)) input.disabled = true;
+        wrap.appendChild(input);
+      } else if (field.type === 'checkboxes') {
+        const checklist = document.createElement('div');
+        checklist.className = 'checklist';
+
+        field.options.forEach((option) => {
+          const item = document.createElement('label');
+          item.className = 'check-item';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.name = field.key;
+          checkbox.value = option;
+          checkbox.checked = Array.isArray(dossier[field.key]) ? dossier[field.key].includes(option) : false;
+          checkbox.dataset.label = field.label;
+          checkbox.dataset.required = field.required ? 'true' : 'false';
+          if (isReadOnlyForDossier(dossier)) checkbox.disabled = true;
+
+          const text = document.createElement('span');
+          text.textContent = option;
+
+          item.appendChild(checkbox);
+          item.appendChild(text);
+          checklist.appendChild(item);
+        });
+
+        wrap.appendChild(checklist);
+      } else {
+        const input = document.createElement('input');
+        input.type = field.type;
+        input.id = `field-${field.key}`;
+        input.name = field.key;
+        input.value = value;
+        input.dataset.label = field.label;
+        input.dataset.required = field.required ? 'true' : 'false';
+        if (isReadOnlyForDossier(dossier)) input.disabled = true;
+        wrap.appendChild(input);
+      }
+
+      grid.appendChild(wrap);
+    });
+
+    body.appendChild(grid);
+    panel.appendChild(body);
+    form.appendChild(panel);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'form-row-actions';
+
+  if (canModifyDossier(dossier)) {
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'primary-btn';
+    saveBtn.textContent = 'Sauvegarder';
+    saveBtn.addEventListener('click', saveCurrentDossier);
+    actions.appendChild(saveBtn);
+
+    const lockBtn = document.createElement('button');
+    lockBtn.type = 'button';
+    lockBtn.className = 'secondary-btn';
+    lockBtn.textContent = dossier.locked ? '🔓 Déverrouiller (auteur)' : '🔒 Verrouiller';
+    lockBtn.addEventListener('click', () => (dossier.locked ? unlockDossier() : lockDossier()));
+    actions.appendChild(lockBtn);
+
+    const modBtn = document.createElement('button');
+    modBtn.type = 'button';
+    modBtn.className = 'ghost-btn';
+    modBtn.style.color = 'var(--text)';
+    modBtn.style.background = 'var(--panel-muted)';
+    modBtn.style.border = '1px solid var(--line)';
+    modBtn.textContent = '🛠 Modération';
+    modBtn.addEventListener('click', openModerationModal);
+    actions.appendChild(modBtn);
+  }
+
+  const openSharedBtn = document.createElement('button');
+  openSharedBtn.type = 'button';
+  openSharedBtn.className = 'ghost-btn';
+  openSharedBtn.style.color = 'var(--text)';
+  openSharedBtn.style.background = 'var(--panel-muted)';
+  openSharedBtn.style.border = '1px solid var(--line)';
+  openSharedBtn.textContent = '🔗 Ouvrir le dossier partagé';
+  openSharedBtn.addEventListener('click', () => {
+    window.location.hash = '#' + encodePayload({ d: dossier });
+    showToast('Dossier ouvert en partage public.');
+  });
+  actions.appendChild(openSharedBtn);
+
+  form.appendChild(actions);
+}
+
+function renderDossierView(dossier) {
+  document.getElementById('view-home').classList.remove('active');
+  document.getElementById('view-dossier').classList.add('active');
+
+  const form = document.getElementById('dossier-form');
+  const topbar = document.getElementById('dossier-topbar');
+  const shareNotice = document.getElementById('share-notice');
+  const formWrap = document.getElementById('dossier-form-wrap');
+
+  document.getElementById('dossier-status').textContent = dossier.status || 'INCOMPLET';
+  document.getElementById('dossier-status').className = `status-badge ${dossier.status === 'COMPLET' ? 'complete' : dossier.locked ? 'readonly' : ''}`.trim();
+  document.getElementById('dossier-badge').textContent = `Dossier • ${typeMeta[dossier.type]?.label || 'Inconnu'}`;
+  document.getElementById('viewer-title').textContent = dossier.title || typeMeta[dossier.type]?.label || 'Dossier';
+
+  const shareLabel = dossier.status === 'COMPLET' ? 'lecture seule' : 'n’importe quel utilisateur peut le compléter';
+  shareNotice.classList.remove('hidden');
+  shareNotice.innerHTML = `
+    <div class="eyebrow">Lien du dossier</div>
+    <div><strong>${dossier.title || typeMeta[dossier.type]?.label}</strong></div>
+    <div class="muted">${shareLabel}</div>
+    <div class="share-url">
+      <input type="text" value="${buildShareUrl(dossier)}" readonly />
+      <button type="button" class="primary-btn small" id="copy-share-url">📋 Copier le lien</button>
+    </div>
+  `;
+
+  document.getElementById('copy-share-url').addEventListener('click', () => {
+    navigator.clipboard.writeText(buildShareUrl(dossier)).then(() => showToast('Lien copié.')).catch(() => showToast('Copie impossible.'));
+  });
+
+  topbar.classList.remove('hidden');
+  formWrap.classList.remove('hidden');
+  bindFormValues(form, dossier);
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'link-grid';
+  wrapper.innerHTML = `
+    <div class="section-header"><h3>Dossiers liés</h3></div>
+    <div class="field-row">
+      <label>Coller un lien d’un autre dossier</label>
+      <div class="share-url">
+        <input id="linked-url" type="text" placeholder="https://...#..." />
+        <button type="button" id="btn-add-linked" class="secondary-btn small">Ajouter</button>
+      </div>
+    </div>
+    <div id="linked-list"></div>
+  `;
+
+  form.appendChild(wrapper);
+  renderLinkedDossiers();
+
+  document.getElementById('btn-add-linked').addEventListener('click', () => {
+    const url = document.getElementById('linked-url').value.trim();
+    if (!url) {
+      showToast('Collez un lien valide.');
+      return;
+    }
+    addLinkedDossier(url);
+  });
+}
+
+function renderLinkedDossiers() {
+  const list = document.getElementById('linked-list');
+  if (!list) return;
+
+  if (!state.linkedDossiers.length) {
+    list.innerHTML = '<div class="muted">Aucun dossier lié ajouté.</div>';
+    return;
+  }
+
+  list.innerHTML = state.linkedDossiers.map((item) => `
+    <div class="link-card">
+      <div class="link-card-header">
+        <strong>${item.title}</strong>
+        <span class="inline-tag ${item.status === 'COMPLET' ? 'complete' : item.locked ? 'readonly' : ''}">${item.status || 'INCOMPLET'}</span>
+      </div>
+      <small>${typeMeta[item.type]?.label || item.type}</small>
+      <div class="meta-row">
+        <div class="muted">${item.numeroDossier || 'N° non défini'}</div>
+        <button class="primary-btn small" data-open-linked="${encodeURIComponent(item.url)}">Ouvrir</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-open-linked]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const url = decodeURIComponent(button.dataset.openLinked);
+      openSharedDossier(url);
+    });
+  });
+}
+
+function addLinkedDossier(url) {
+  const dossier = openSharedDossier(url, false);
+  if (!dossier) {
+    showToast('Le lien ne correspond pas à un dossier valide.');
+    return;
+  }
+
+  if (state.linkedDossiers.some((item) => item.url === url)) {
+    showToast('Ce dossier est déjà lié.');
+    return;
+  }
+
+  state.linkedDossiers.push({ ...dossier, url });
+  renderLinkedDossiers();
+  showToast('Dossier lié ajouté.');
+}
+
+function openSharedDossier(url, navigate = true) {
+  const raw = url.includes('#') ? url.split('#')[1] : url;
+  const payload = decodePayload(raw);
+  const dossier = payload?.d || payload;
+
+  if (!dossier || !dossier.type) return null;
+
+  if (navigate) {
+    state.currentDossier = dossier;
+    renderDossierView(dossier);
+  }
+
+  return dossier;
+}
+
+function onHashChange() {
+  const hash = window.location.hash.replace(/^#/, '');
+  if (!hash) {
+    renderHome();
+    return;
+  }
+
+  const payload = decodePayload(hash);
+  const dossier = payload?.d || payload;
+
+  if (dossier && dossier.type) {
+    state.currentDossier = dossier;
+    renderDossierView(dossier);
+  }
+}
+
 function saveCurrentDossier() {
   const form = document.getElementById('dossier-form');
   const missing = listRequiredFieldsForCurrentDossier();
@@ -863,26 +783,18 @@ function saveCurrentDossier() {
   showToast('Dossier sauvegardé.');
 }
 
-function copyTextToClipboard(value) {
-  navigator.clipboard
-    .writeText(value)
-    .then(() => showToast('Lien copié.'))
-    .catch(() => showToast('Le navigateur a refusé la copie. Copiez manuellement.'));
-}
-
 function lockDossier() {
   const dossier = state.currentDossier;
   if (!dossier) return;
 
   const missing = listRequiredFieldsForCurrentDossier();
   if (missing.length) {
-    const confirmLock = window.confirm(`Le dossier contient ${missing.length} champs obligatoires manquants. Confirmez le verrouillage ?`);
-    if (!confirmLock) return;
+    const proceed = window.confirm(`Le dossier contient ${missing.length} champs obligatoires manquants. Confirmez le verrouillage ?`);
+    if (!proceed) return;
   }
 
   dossier.locked = true;
   dossier.lockAuthor = state.loggedInUser.name;
-  dossier.status = dossier.status || 'INCOMPLET';
   const map = getSavedDossiers();
   map[dossier.id] = dossier;
   saveDossiersMap(map);
@@ -893,6 +805,7 @@ function lockDossier() {
 function unlockDossier() {
   const dossier = state.currentDossier;
   if (!dossier || !state.loggedInUser) return;
+
   if (dossier.lockAuthor !== state.loggedInUser.name) {
     showToast('Seul l’auteur peut déverrouiller ce dossier.');
     return;
@@ -922,31 +835,19 @@ function openModerationModal() {
       <div class="modal-body">
         <div class="action-list">
           <div class="action-row">
-            <div>
-              <strong>Supprimer</strong>
-              <div class="muted">Retire le dossier de la liste.</div>
-            </div>
+            <div><strong>Supprimer</strong><div class="muted">Retire le dossier de la liste.</div></div>
             <button class="danger-btn" data-action="delete">🗑 Supprimer</button>
           </div>
           <div class="action-row">
-            <div>
-              <strong>Dupliquer</strong>
-              <div class="muted">Crée une copie du dossier.</div>
-            </div>
+            <div><strong>Dupliquer</strong><div class="muted">Crée une copie du dossier.</div></div>
             <button class="secondary-btn" data-action="duplicate">📄 Dupliquer</button>
           </div>
           <div class="action-row">
-            <div>
-              <strong>Vider le dossier</strong>
-              <div class="muted">Efface les données du dossier.</div>
-            </div>
+            <div><strong>Vider le dossier</strong><div class="muted">Efface les données du dossier.</div></div>
             <button class="secondary-btn" data-action="clear">🧹 Vider</button>
           </div>
           <div class="action-row">
-            <div>
-              <strong>Forcer la modification</strong>
-              <div class="muted">Désactive le verrouillage.</div>
-            </div>
+            <div><strong>Forcer la modification</strong><div class="muted">Désactive le verrouillage.</div></div>
             <button class="secondary-btn" data-action="force-edit">🔓 Forcer</button>
           </div>
         </div>
@@ -955,13 +856,13 @@ function openModerationModal() {
   `;
 
   document.body.appendChild(modal);
-
   modal.querySelector('[data-close-modal]').addEventListener('click', () => modal.remove());
+
   modal.querySelectorAll('[data-action]').forEach((button) => {
     button.addEventListener('click', () => {
       const action = button.dataset.action;
       const code = window.prompt('Code modérateur :');
-      if (String(code || '') !== String(CONFIG.moderatorCode)) {
+      if (String(code || '') !== String('DEA-2026')) {
         showToast('Code modérateur incorrect.');
         return;
       }
@@ -969,16 +870,19 @@ function openModerationModal() {
       switch (action) {
         case 'delete':
           if (!window.confirm('Supprimer définitivement ce dossier ?')) return;
-          removeDossierFromStorage(dossier.id);
+          const map = getSavedDossiers();
+          delete map[dossier.id];
+          saveDossiersMap(map);
+          setRecentList(getRecentList().filter((id) => id !== dossier.id));
           modal.remove();
           navigateToHome();
           showToast('Dossier supprimé.');
           break;
         case 'duplicate': {
           const clone = { ...dossier, id: generateId(), title: `${dossier.title} (copie)`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lockAuthor: '', locked: false };
-          const map = getSavedDossiers();
-          map[clone.id] = clone;
-          saveDossiersMap(map);
+          const copyMap = getSavedDossiers();
+          copyMap[clone.id] = clone;
+          saveDossiersMap(copyMap);
           state.currentDossier = clone;
           modal.remove();
           renderDossierView(clone);
@@ -986,11 +890,11 @@ function openModerationModal() {
           break;
         }
         case 'clear': {
-          if (!window.confirm('Vider le dossier ? Cette action ne peut pas être annulée.')) return;
-          const cleared = { ...dossier, ...createBaseDossier(dossier.type), id: dossier.id, title: dossier.title, author: dossier.author, type: dossier.type, createdAt: dossier.createdAt, updatedAt: new Date().toISOString() };
-          const map = getSavedDossiers();
-          map[cleared.id] = cleared;
-          saveDossiersMap(map);
+          if (!window.confirm('Vider le dossier ?')) return;
+          const cleared = { ...dossier, ...createBaseDossier(dossier.type), id: dossier.id, title: dossier.title, createdAt: dossier.createdAt, updatedAt: new Date().toISOString() };
+          const clearMap = getSavedDossiers();
+          clearMap[cleared.id] = cleared;
+          saveDossiersMap(clearMap);
           state.currentDossier = cleared;
           modal.remove();
           renderDossierView(cleared);
@@ -1000,26 +904,17 @@ function openModerationModal() {
         case 'force-edit': {
           dossier.locked = false;
           dossier.lockAuthor = '';
-          const map = getSavedDossiers();
-          map[dossier.id] = dossier;
-          saveDossiersMap(map);
+          const forceMap = getSavedDossiers();
+          forceMap[dossier.id] = dossier;
+          saveDossiersMap(forceMap);
           modal.remove();
           renderDossierView(dossier);
           showToast('Modification forcée activée.');
           break;
         }
-        default:
-          break;
       }
     });
   });
-}
-
-function removeDossierFromStorage(id) {
-  const map = getSavedDossiers();
-  delete map[id];
-  saveDossiersMap(map);
-  setRecentList(getRecentList().filter((item) => item !== id));
 }
 
 function handleLogin() {
@@ -1046,6 +941,7 @@ function initEventBindings() {
   document.getElementById('btn-login').addEventListener('click', handleLogin);
   document.getElementById('btn-logout').addEventListener('click', logout);
   document.getElementById('btn-home').addEventListener('click', navigateToHome);
+
   document.getElementById('btn-new-dossier').addEventListener('click', () => {
     const modal = document.createElement('div');
     modal.className = 'modal';
@@ -1057,19 +953,15 @@ function initEventBindings() {
         </div>
         <div class="modal-body">
           <div class="type-grid">
-            ${Object.keys(typeMeta)
-              .map(
-                (type) => `
-                  <button class="type-item" data-type-choice="${type}">
-                    <div>
-                      <strong>${typeMeta[type].label}</strong>
-                      <span>${typeMeta[type].description}</span>
-                    </div>
-                    <span>＋</span>
-                  </button>
-                `
-              )
-              .join('')}
+            ${Object.keys(typeMeta).map((type) => `
+              <button class="type-item" data-type-choice="${type}">
+                <div>
+                  <strong>${typeMeta[type].label}</strong>
+                  <span>${typeMeta[type].description}</span>
+                </div>
+                <span>＋</span>
+              </button>
+            `).join('')}
           </div>
         </div>
       </div>
@@ -1089,8 +981,7 @@ function initEventBindings() {
 
   window.addEventListener('hashchange', onHashChange);
   window.addEventListener('beforeunload', (event) => {
-    const form = document.getElementById('dossier-form');
-    if (form && form.querySelector('input, textarea, select') && !state.currentDossier?.readOnly) {
+    if (state.currentDossier && !state.currentDossier.readOnly) {
       event.preventDefault();
       event.returnValue = '';
     }
@@ -1103,9 +994,7 @@ function bootstrap() {
   initEventBindings();
 
   const auth = getAuth();
-  if (auth && auth.name) {
-    state.loggedInUser = auth;
-  }
+  if (auth && auth.name) state.loggedInUser = auth;
 
   const hash = window.location.hash.replace(/^#/, '');
   if (hash) {

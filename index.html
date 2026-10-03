@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dossiers DEA</title>
+    <meta
+      name="description"
+      content="Dossiers DEA — gestion confidentielle des dossiers d'enquête"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-kicker">Confidentiel</div>
+          <h1>DOSSIERS DEA</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="btn-home" class="ghost-btn">Accueil</button>
+          <button id="btn-logout" class="ghost-btn danger hidden">Se déconnecter</button>
+        </div>
+      </header>
+
+      <main class="app-frame">
+        <section id="view-home" class="view active">
+          <div class="hero card">
+            <div>
+              <p class="eyebrow">usage interne</p>
+              <h2>Gestion des dossiers d'enquête</h2>
+            </div>
+            <div class="auth-panel" id="login-panel">
+              <h3>Connexion</h3>
+              <div class="field-row">
+                <label>Nom</label>
+                <input id="login-name" type="text" maxlength="40" minlength="2" />
+              </div>
+              <div class="field-row">
+                <label>Mot de passe</label>
+                <input id="login-password" type="password" maxlength="64" minlength="4" />
+              </div>
+              <button id="btn-login" class="primary-btn">Entrer</button>
+            </div>
+            <div class="connected-panel hidden" id="connected-panel">
+              <p>Connecté en tant que</p>
+              <h3 id="connected-user">-</h3>
+              <div class="connected-actions">
+                <button id="btn-new-dossier" class="primary-btn">Nouveau dossier</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="home-grid">
+            <div class="card">
+              <div class="section-header">
+                <h3>Création rapide</h3>
+              </div>
+              <div id="new-dossier-types" class="type-grid"></div>
+            </div>
+
+            <div class="card">
+              <div class="section-header">
+                <h3>Dossiers récents</h3>
+              </div>
+              <div id="recent-list" class="recent-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-dossier" class="view">
+          <div id="dossier-topbar" class="dossier-topbar card hidden">
+            <div>
+              <div class="eyebrow" id="dossier-badge">Dossier</div>
+              <h2 id="viewer-title">-</h2>
+            </div>
+            <div class="status-group">
+              <span id="dossier-status" class="status-badge">INCOMPLET</span>
+              <button id="btn-copy-link" class="primary-btn small">📋 Copier le lien</button>
+            </div>
+          </div>
+
+          <div id="share-notice" class="share-notice card hidden"></div>
+
+          <div id="dossier-form-wrap" class="card hidden">
+            <form id="dossier-form"></form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
